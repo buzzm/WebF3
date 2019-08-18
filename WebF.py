@@ -193,31 +193,36 @@ class WebF:
            self.send_response(respCode)
 
 
-           if "Accept" in self.headers:
-               ahdr = self.headers['Accept']
-           else:
-               ahdr = 'application/json'
-
+           fmt = 'application/json'  # default
+           afmt = fmt
            boundary = None
            jfmt = mson.PURE
+           theWriter = mson.write
 
-           gg = [ x.strip() for x in ahdr.split(';')]
+           #  We expect simple
+           #  Accept: application/json,json 
+           #  No fancy alternative and q factor stuff.
 
-           fmt = gg[0]
+           gg = []
+           if 'Accept' in self.headers:
+               gg = [ x.strip() for x in self.headers['Accept'].split(';')]
+               afmt = gg[0] # just take first one; very simple
 
-           if fmt == "application/bson":
+           if afmt == "application/bson":
                jfmt = None
-               contentType = 'application/bson'
+               fmt = 'application/bson'
                theWriter = self.bsonWriter
                boundary = "_"  # trick the boundary logic
                
-           else:  # either json or ejson
+           elif afmt == "application/json" or afmt == "application/ejson":
                theWriter = mson.write
 
-               if fmt == "application/json":
+               if afmt == "application/json":
+                   fmt = afmt
                    jfmt = mson.PURE
 
-               if fmt == "application/ejson":
+               elif afmt == "application/ejson":
+                   fmt = afmt
                    jfmt = mson.MONGO
                    
                # json and ejson support boundary=[LF,CR]
@@ -227,11 +232,13 @@ class WebF:
                        if attr[0] == "boundary":
                            if attr[1] in ['LF','CR']:
                                boundary = "LF"
+                               fmt += "; boundary=LF"
                            else:
                                print("unsupported json boundary") # TBD
 
+           # else afmt is an unrecognized fmt; should do something about this
+           self.send_header('Content-type', fmt)
 
-           self.send_header('Content-type', ahdr)
 
            if self.server.parent.cors is not None:
               self.send_header('Access-Control-Allow-Origin', self.server.parent.cors)
