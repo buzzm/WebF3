@@ -2,7 +2,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from socketserver import ThreadingMixIn
 
-import urllib
+import urllib.parse
 import datetime
 from mson import mson
 import bson
@@ -95,7 +95,7 @@ class WebF:
                 func, params = reqinfo.split('?', 1)
                 params = dict([p.split('=', 1) for p in params.split('&') if '=' in p])
                 for k in params:
-                    params[k] = urllib.unquote(params[k])
+                    params[k] = urllib.parse.unquote(params[k])
             else:
                 func = reqinfo
 
