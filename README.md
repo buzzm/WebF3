@@ -104,12 +104,17 @@ These options are available upon construction:
 ```
 addr (string)           listen addr (default: localhost BUT if you want other machines to connect, specify "0.0.0.0"
 port (int)              Port upon which to listen (default 7778)
-sslPEMKeyFile (string)  Path to file in PEM format containing a concatenation of private key and the full cert chain; automatically enables SSL to permit https access to this service
+
+sslKeyCertChainFile (string)  Path to file in PEM format containing a concatenation of private key and the full cert chain; automatically enables SSL to permit https access to this service
+
+sslKeyFile (string)  Path to file in PEM format containing just the private key; must be used with sslCertChainFile arg
+sslCertChainFile (string)  Path to file in PEM format just the full cert chain but no private key; must be used with sslKeyFile arg
+
 cors (string)           URI or *.  If set, server will set Access-Control-Allow-Origin header to this value upon return
 
 Example:
 websvc = WebF.WebF({"port": 8080,
-       	            "sslPEMKeyFile": theFile,
+       	            "sslKeyCertChainFile": theFile,
                     "cors":'*'})
 ```
 
@@ -162,13 +167,18 @@ after the function name are placed into an array and assigned to the special
 argument name `_` in the `args` dictionary.
   * rfile:  The input stream if this is a PUT, POST, or PATCH
 
-`start` must return a tuple containing 3 items: the HTTP response code, a dict, and a boolean
-True or False to indicate that `next` and `end` should be executed.  The dict can
-be `None`.  The framework does not interpret the meaning of response codes; it is the
+`start` must return a tuple containing 4 items: the HTTP response code, additional http headers, a dict, and a boolean True or False to indicate that `next` and `end` should
+be executed.  The additional headers can be `None`.  The dict can be `None`.  It is 
+OK to return `None` as the "initial dict" yet pass `True` as the "keep going" flag.
+This sometimes make the setup of producing and emitting "rows" of data easier by
+localizing the logic to the `next` method instead of splitting it across `start` and
+`next`.  
+The framework does not interpret the meaning of response codes; it is the
 responsibility of the function writer to pass the combination of code, data (in the dict),
 and "keep going" flag.  The "keep going" flag is necessary because the framework will
 automatically try to execute `next` and `end` if they exist regardless of the HTTP
-response code.   Note that it is a noop if the keep going flag is set True and there is no
+response code.   
+Note that it is a noop if the keep going flag is set True and there is no
 `next` or `end` method.
 
 

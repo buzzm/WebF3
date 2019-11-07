@@ -188,7 +188,7 @@ class WebF:
 
            # Give start() a chance to do something; it is required mostly
            # because it must provide a response code.
-           (respCode, hdrdoc, keepGoing) = handler.start(self.command, self.headers, args, self.rfile)
+           (respCode, addtl_hdrs, hdrdoc, keepGoing) = handler.start(self.command, self.headers, args, self.rfile)
 
            self.send_response(respCode)
 
@@ -239,10 +239,14 @@ class WebF:
            # else afmt is an unrecognized fmt; should do something about this
            self.send_header('Content-type', fmt)
 
+           if addtl_hdrs is not None:
+               for k,v in addtl_hdrs.items():
+                   self.send_header(k,v) 
 
            if self.server.parent.cors is not None:
               self.send_header('Access-Control-Allow-Origin', self.server.parent.cors)
            self.end_headers()
+
 
            if boundary is None:
                self.wfile.write(b'[')  # leading 'b' means convert to byte from unicode
@@ -494,9 +498,14 @@ class WebF:
     #  port           int      listen port (default: 7778)
     #  addr           string   listen addr (default: localhost BUT if you want
     #                          other machines to connect, specify "0.0.0.0"
-    #  sslPEMKeyFile  string   Path to file in PEM format containing concatenation of
+    #
+    #  sslKeyCertChainFile  string   Path to file in PEM format containing concatenation of
     #                          private key plus ALL certs (the full cert chain)
     #                          (required for https access to this service)
+    #
+    #  sslKeyFile  string   Path to file in PEM format containing private key only (must be used with sslCertChainFile)
+    #  sslCertChainFile  string   Path to file in PEM format containing the full cert chain but not the key (must be used with sslKeyFile)
+    #
     #  cors           URI | *  Set Access-Control-Allow-Origin to this
     #                          value.  See http CORS docs for details.
     #
@@ -512,14 +521,27 @@ class WebF:
         #  To run this server as https:
         #  Make a key and cert files:
         #    openssl req -x509 -nodes -newkey rsa:2048 -subj "/CN=localhost" -keyout key.pem -out cert.pem -days 3650
+        #  Then set the sslKeyFile + sslCertChainFile args
+        #  OR, 
         #    cat key.pem cert.pem > mycert.pem
         #  Pass the mycert.pem file as value for sslPEMKeyFile
-        if 'sslPEMKeyFile' in self.wargs:
+
+        if 'sslKeyCertChainFile' in self.wargs:
            import ssl   # condition import!
-           cf = self.wargs['sslPEMKeyFile']
+           cf = self.wargs['sslKeyCertChainFile']
 
            self.httpd.socket = ssl.wrap_socket (self.httpd.socket, certfile=cf, server_side=True)
 
+        if 'sslKeyFile' in self.wargs and 'sslCertChainFile' in self.wargs:
+           import ssl   # condition import!
+           kf = self.wargs['sslKeyFile']
+           cf = self.wargs['sslCertChainFile']
+
+           context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+           context.load_cert_chain(cf, kf)
+
+           self.httpd.socket = context.wrap_socket(self.httpd.socket, server_side=True)
+            
 
         self.cors = self.wargs['cors'] if 'cors' in self.wargs else None
 
