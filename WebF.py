@@ -2,6 +2,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from socketserver import ThreadingMixIn
 
+import ratelimit   # PYTHONPATH= pip3 install ratelimit
+
 import urllib.parse
 import datetime
 from mson import mson
@@ -26,7 +28,7 @@ class WebF:
             return {}
 
         def start(self, cmd, hdrs, args, rfile):
-           return (200, None, True)
+           return (200, None, None, True)
 
         def next(self):
             for fname in self.parent.fmap:
@@ -48,7 +50,7 @@ class WebF:
             self.errs = errs
 
         def start(self, cmd, hdrs, args, rfile):
-           return (self.respcode, None, True)
+           return (self.respcode, None, None, True)
         
         def next(self):
             for err in self.errs:
@@ -60,6 +62,7 @@ class WebF:
 
 
     class HTTPHandler(BaseHTTPRequestHandler):
+
         #  Each command action on HTTP gets turned into a callable
         #  method here, e.g. curl -X GET is bound to do_GET.  There is no
         #  restriction; curl -X CORN will map to do_CORN and if do_CORN is not
@@ -288,6 +291,7 @@ class WebF:
                self.wfile.write(b']')                    
 
 
+
         def call(self, path):
             xx = self.server.parent
 
@@ -296,6 +300,20 @@ class WebF:
             fargs       = None
             fmt         = None; 
 
+            try: 
+                # Fancy way of calling decorator:
+                if xx.rateLimiter is not None:
+                    xx.rateLimiter.__call__(lambda: None)()
+
+            except ratelimit.exception.RateLimitException as e:
+               err = {
+                  'errcode': 9,
+                  'msg': "call rate limit exceeded"
+                  }
+               handler = xx.internalErr(429, [err])
+               self.respond(None, handler)
+               return   # bail out
+                
             try:
                 user = None
 
@@ -478,6 +496,7 @@ class WebF:
                        loghandler(info)
 
 
+
             except Exception as e:
                err = {
                   'errcode': 6,
@@ -509,9 +528,19 @@ class WebF:
     #  cors           URI | *  Set Access-Control-Allow-Origin to this
     #                          value.  See http CORS docs for details.
     #
+    #  rateLimit      int      Server-scoped function call rate limit per second
+    #
+
     def __init__(self, wargs=None):
+
         self.fmap = {}
         self.wargs = wargs if wargs is not None else {}
+
+
+        self.rateLimiter = None
+        if 'rateLimit' in self.wargs:
+            self.rateLimiter = ratelimit.RateLimitDecorator(calls=self.wargs['rateLimit'],period=1)
+
 
         listen_addr = self.wargs['addr'] if 'addr' in self.wargs else "localhost"
         listen_port = int(self.wargs['port']) if 'port' in self.wargs else 7778

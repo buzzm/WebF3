@@ -63,7 +63,8 @@ forever"""
     def start(self, cmd, hdrs, args, rfile):
         print(hdrs)
         doc = self.makeDoc(1)
-        return (200, doc, True)
+        addtl_hdrs = {"X-Header-1":"v1", "X-Header-2":"v2"}
+        return (200, addtl_hdrs, doc, True)
 
     def next(self):
         for x in range(0,2):
@@ -71,12 +72,22 @@ forever"""
             yield doc
 
 
+    def Xstart(self, cmd, hdrs, args, rfile):
+        print(hdrs)
+        doc = self.makeDoc(1)
+        return (200, addtl_hdrs, doc, True)
+
+
+
 def main():
     webfArgs = {
         "port":7778,
         "addr":"0.0.0.0",
-#        "sslPEMKeyFile":"mycert.pem", # must be PEM format w/private key + cert
-        "cors":'*'
+#        "sslKeyCertChainFile":"mycert.pem", # must be PEM format w/private key + cert
+        "sslKeyFile":"../WebF/key.pem",
+        "sslCertChainFile":"../WebF/cert.pem",
+        "cors":'*',
+        "rateLimit":5
         }
 
     r = WebF.WebF(webfArgs)

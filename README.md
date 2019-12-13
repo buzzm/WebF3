@@ -112,6 +112,8 @@ sslCertChainFile (string)  Path to file in PEM format just the full cert chain b
 
 cors (string)           URI or *.  If set, server will set Access-Control-Allow-Origin header to this value upon return
 
+rateLimit (int)         Server-scoped (i.e. across all functions) call rate limit per second
+
 Example:
 websvc = WebF.WebF({"port": 8080,
        	            "sslKeyCertChainFile": theFile,
