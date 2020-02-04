@@ -405,6 +405,7 @@ class WebF:
                     #  appropriate HTTP return code.
                     zz = handler.help()
                     argerrs = self.chkArgs(zz, args)
+
                     if len(argerrs) > 0:
                        respCode = 400
                        handler = xx.internalErr(respCode, argerrs)
@@ -529,6 +530,7 @@ class WebF:
     #                          value.  See http CORS docs for details.
     #
     #  rateLimit      int      Server-scoped function call rate limit per second
+    #  allowHelp      boolean  Permit or disable /help builtin function (default: true)
     #
 
     def __init__(self, wargs=None):
@@ -579,13 +581,22 @@ class WebF:
         self.auth_handler = None   # optional
         self.auth_context = None   # optional
 
-        self.registerFunction("__help", self.internalHelp, {"parent":self});
+        self.allow_help = self.wargs['allowHelp'] if 'allowHelp' in self.wargs else True
+        if self.allow_help == True:
+            self.registerFunction("__help", self.internalHelp, {"parent":self});
 
         self.httpd.parent = self
 
 
     def registerFunction(self, name, handler, context):
+        if name == "":
+            raise ValueError("function name cannot be empty string")
+
         self.fmap[name] = (handler,context)
+
+    def deregisterFunction(self, name):
+        if name in self.fmap:
+            del self.fmap[name]
 
 
 

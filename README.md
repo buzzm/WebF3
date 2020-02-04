@@ -136,7 +136,10 @@ websvc.registerFunction("foo", Func1, context)
 
 Registration binds the function name (a string) to a class (*not* the instance,
 the class; not the class name, the class!) plus "context" or variables to pass
-to the function class upon construction.
+to the function class upon construction.  The function name string cannot be
+the empty string "" and it should realistically be something that can be 
+easily encoded on the URL so avoid spaces, slashes, punctuation, quotes, etc.
+
 This approach differs slightly from Java servlets where typically the 
 servlet is instantiated only once in the lifetime of the container and
 shared across multiple threads.  This requires special attention to not
@@ -144,6 +147,12 @@ putting anything in class scope (without special handling) to prevent
 concurrency issues.   WebF is simpler: when the function is called, a
 new handler instance is created.  Shared material or material that must
 persist across calls, if desired, can be accessed/managed via the context.  
+
+Functions can be deregistered with the `deregisterFunction` method.  Both
+`registerFunction` and `deregisterFunction` can be called at any time 
+during the lifetime of the WebF service instance.  This means both functions
+themselves and other asynchronous events can dynamically create endpoints
+although this is a non-trivial implementation.
 
 More sophisticated designs might call for versioning:
 ```

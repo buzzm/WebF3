@@ -13,8 +13,12 @@ class Func1:
 
     def help(self):
         return {"type":"simple",
-                "desc":"A function that returns something."}
-
+                "desc":"A function that returns something.",
+                "args":[
+                  {"name":"maxCount", "type":"int","req":"Y",
+                   "desc":"max number of snacks"}
+                ]
+                }
 
     def makeDoc(self, num):
         #dd = datetime.datetime.now()
@@ -61,7 +65,8 @@ forever"""
 
 
     def start(self, cmd, hdrs, args, rfile):
-        print(hdrs)
+        print("hdrs:", hdrs)
+        print("args:", args)
         doc = self.makeDoc(1)
         addtl_hdrs = {"X-Header-1":"v1", "X-Header-2":"v2"}
         return (200, addtl_hdrs, doc, True)
@@ -70,12 +75,6 @@ forever"""
         for x in range(0,2):
             doc = self.makeDoc(2+x)
             yield doc
-
-
-    def Xstart(self, cmd, hdrs, args, rfile):
-        print(hdrs)
-        doc = self.makeDoc(1)
-        return (200, addtl_hdrs, doc, True)
 
 
 
@@ -87,11 +86,13 @@ def main():
         "sslKeyFile":"../WebF/key.pem",
         "sslCertChainFile":"../WebF/cert.pem",
         "cors":'*',
+        "allowHelp":False,
         "rateLimit":5
         }
 
     r = WebF.WebF(webfArgs)
     r.registerFunction("func1", Func1, None);
+
     print("ready")
     r.go()
 
