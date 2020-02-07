@@ -32,9 +32,10 @@ class Func1:
 
 	# Return:
 	#   200 ("ok")
-	#   None (we will let next() vend each doc)
+	#   None (no additional headers to add to response)
+	#   None (no doc to emit because we will let next() vend each doc)
 	#   True (tell WebF to keep going with next() )
-        return (200, None, True)
+        return (200, None, None, True)
         
     def next(self):
         for n in range(0, self.maxCount):
@@ -447,7 +448,12 @@ the HTTP headers are passed in the `start` method.  To be more well-factored,
 A separate helper function could also be crafted and called at the beginning
 of each `start` function.  As a convenience, the `matchHeader` option can be
 used which will be automatically applied to all functions.  If a header value
-does not match regex, an error is raised similar to a wrong arg type.
+does not match at least one of the supplied regexp, an error is raised similar
+to a wrong arg type.  For example, to only allow Mozilla and curl access:
+```
+websvc = WebF.WebF({"matchHeader": { "User-Agent": [ "^curl/", "^Mozilla/5.0" ] } })
+```
+
 
 
 
