@@ -9,6 +9,7 @@ import datetime
 from mson import mson
 import bson
 
+import re
 import traceback
 import sys
 
@@ -20,6 +21,9 @@ class MultiThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 
 
 class WebF:
+
+    helpFuncName = "__help"
+
     class internalHelp:
         def __init__(self, context):
             self.parent = context['parent']
@@ -310,9 +314,31 @@ class WebF:
                   'errcode': 9,
                   'msg': "call rate limit exceeded"
                   }
-               handler = xx.internalErr(429, [err])
+               handler = xx.errHandler(429, [err])
                self.respond(None, handler)
                return   # bail out
+
+
+
+            if xx.match_header is not None:
+                for hdrname in xx.match_header:
+                    mm = None
+                    for rr in xx.match_header[hdrname]:
+                        item = self.headers[hdrname] if hdrname in self.headers else ""
+
+                        mm = re.search(rr, item)
+                        if mm is not None:
+                            break
+                    if mm is None:
+                        err = {
+                            'errcode': 11,
+                            'msg': "header %s value is invalid" % hdrname
+                            }
+                        #handler = xx.errHandler(400, [err])
+                        handler = xx.errHandler(400, [err])
+                        self.respond(None, handler)
+                        return   # bail out
+
                 
             try:
                 user = None
@@ -322,11 +348,14 @@ class WebF:
                 # Extract params (after the '?') from the rest of it:
                 prefunc,params = self.parse(path)
 
-                # The Exception:
-                # If prefunc = "help" then it's "__help"  It is The One 
-                # function that bridges internal and external handling.
+                if prefunc == xx.helpFuncName:  
+                    prefunc = "help"
+
                 if prefunc == "help":
-                    prefunc = "__help"
+                    # "__help" is registered; help is not.  So is help
+                    # is defeated, then don't switch names 
+                    if xx.allow_help == True:
+                        prefunc = xx.helpFuncName
 
                 
                 func = None
@@ -357,10 +386,10 @@ class WebF:
                    err = {
                       'errcode': 5,  # TBD
                       'msg': "no such function",
-                      "data": func
+                      "data": prefunc
                       }
                    respCode = 404 
-                   handler = xx.internalErr(respCode, [err])
+                   handler = xx.errHandler(respCode, [err])
 
                 else:
                     (hname,context) = xx.fmap[func]
@@ -379,7 +408,7 @@ class WebF:
                           'msg': "malformed JSON for args"
                           }
                        respCode = 400
-                       handler = xx.internalErr(respCode, [err])
+                       handler = xx.errHandler(respCode, [err])
 
 
                     try:
@@ -390,7 +419,7 @@ class WebF:
                           'msg': "malformed JSON for fargs"
                           }
                        respCode = 400
-                       handler = xx.internalErr(respCode, [err])
+                       handler = xx.errHandler(respCode, [err])
 
 
 
@@ -408,7 +437,7 @@ class WebF:
 
                     if len(argerrs) > 0:
                        respCode = 400
-                       handler = xx.internalErr(respCode, argerrs)
+                       handler = xx.errHandler(respCode, argerrs)
 
                     else:
                        tt2 = None
@@ -445,7 +474,7 @@ class WebF:
                                if len(tt2) == 3:
                                    err['data'] = tt2[2]
 
-                               handler = xx.internalErr(401, [err])
+                               handler = xx.errHandler(401, [err])
 
                     self.respond(args, handler)
 
@@ -504,7 +533,7 @@ class WebF:
                   'msg': "internal error",
                   "data": func
                   }
-               handler = xx.internalErr(500, [err])
+               handler = xx.errHandler(500, [err])
                self.respond(args, handler)
 
                import traceback
@@ -532,6 +561,9 @@ class WebF:
     #  rateLimit      int      Server-scoped function call rate limit per second
     #  allowHelp      boolean  Permit or disable /help builtin function (default: true)
     #
+    #  matchHeader  (dict of array of regexp)  Incoming header must match one of the specified regexp. To 
+    #                 make a header mandatory but with any value use .*
+                            
 
     def __init__(self, wargs=None):
 
@@ -582,8 +614,13 @@ class WebF:
         self.auth_context = None   # optional
 
         self.allow_help = self.wargs['allowHelp'] if 'allowHelp' in self.wargs else True
-        if self.allow_help == True:
-            self.registerFunction("__help", self.internalHelp, {"parent":self});
+
+        self.match_header = self.wargs['matchHeader'] if 'matchHeader' in self.wargs else None
+
+        self.errHandler = self.wargs['errorHandler'] if 'errorHandler' in self.wargs else self.internalErr
+
+        # Needed for args chking.
+        self.registerFunction(self.helpFuncName, self.internalHelp, {"parent":self});
 
         self.httpd.parent = self
 

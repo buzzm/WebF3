@@ -114,9 +114,16 @@ cors (string)           URI or *.  If set, server will set Access-Control-Allow-
 
 rateLimit (int)         Server-scoped (i.e. across all functions) call rate limit per second
 
+allowHelp (boolean)     If False, the built-in help function is defeated (default: True)
+
+matchHeader  (dict of array of regexp)  Incoming header must match one of the specified regexp. To 
+                        make a header mandatory but with any value use .*
+                            
+
 Example:
 websvc = WebF.WebF({"port": 8080,
        	            "sslKeyCertChainFile": theFile,
+		    "matchHeader": { "User-Agent": [ "^curl/", "^Mozilla/5.0" ] }
                     "cors":'*'})
 ```
 
@@ -137,8 +144,9 @@ websvc.registerFunction("foo", Func1, context)
 Registration binds the function name (a string) to a class (*not* the instance,
 the class; not the class name, the class!) plus "context" or variables to pass
 to the function class upon construction.  The function name string cannot be
-the empty string "" and it should realistically be something that can be 
-easily encoded on the URL so avoid spaces, slashes, punctuation, quotes, etc.
+the empty string "" and it should realistically
+be something that can be easily encoded on the URL so
+avoid spaces, punctuation, quotes, etc.
 
 This approach differs slightly from Java servlets where typically the 
 servlet is instantiated only once in the lifetime of the container and
@@ -151,8 +159,8 @@ persist across calls, if desired, can be accessed/managed via the context.
 Functions can be deregistered with the `deregisterFunction` method.  Both
 `registerFunction` and `deregisterFunction` can be called at any time 
 during the lifetime of the WebF service instance.  This means both functions
-themselves and other asynchronous events can dynamically create endpoints
-although this is a non-trivial implementation.
+themselves and other asynchronous events can dynamically create endpoints.
+
 
 More sophisticated designs might call for versioning:
 ```
@@ -364,8 +372,11 @@ A key feature of WebF is built-in help for functions.  When the service
 is called with the reserved function name `help`, the help() method of
 each registered function will be called and the details of the args and
 a description will be returned as structured payload in whatever format
-is indicated by the `fmt` arg in `fargs` (JSON by default).  The data
+is indicated in the `Accept` header JSON by default).  The data
 in help() is also used for required argument and argument type enforcement.
+
+Sometimes help is not desired.  The help function can be defeated with
+the `allowHelp: False` option.
 
 The help() method has a specific structure:
 ```
@@ -428,6 +439,17 @@ Content-type: text/json
 ```
 
 
+Header Matching
+---------------
+Some use cases call for specific headers to exist and to have certain values.
+It is certainly possible to do this on an individual function basis because
+the HTTP headers are passed in the `start` method.  To be more well-factored,
+A separate helper function could also be crafted and called at the beginning
+of each `start` function.  As a convenience, the `matchHeader` option can be
+used which will be automatically applied to all functions.  If a header value
+does not match regex, an error is raised similar to a wrong arg type.
+
+
 
 Logging
 -------
@@ -458,6 +480,37 @@ class Func1:
     	print info
 ```
 In this case, context is not used.
+
+
+
+Custom Error Handling
+---------------------
+A service may wish to perform more than just report the error code, or it
+may wish a more or less verbose response, for example.  To do so, declare
+an handler class in the `errorHandler` option.  The handler has the same
+interaction requirements as regular functions (start/next/end) so only
+`start` is mandatory.  The differences are there is no authentication
+(because it is internal) and the `__init__` signature is different.  Here
+is a simple example that basically copies the default behavior but prints
+something in the init:
+```
+class MyErr:
+    def __init__(self, respcode, errs):
+        print("You are in MyErr")
+        self.respcode = respcode
+        self.errs = errs
+        
+    def start(self, cmd, hdrs, args, rfile):
+        return (self.respcode, None, None, True)
+        
+    def next(self):
+        for err in self.errs:
+            yield err
+
+
+websvc = WebF.WebF({"errorHandler": MyErr})
+```
+
 
 
 
@@ -693,7 +746,7 @@ class OKNotToHaveAuthentication:
 
 License
 -------
-Copyright (C) {2017} {Buzz Moschetti}
+Copyright (C) {2017,2020} {Buzz Moschetti}
 
 This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 2 of the License, or (at your option) any later version.
 
