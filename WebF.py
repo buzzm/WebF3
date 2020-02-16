@@ -65,8 +65,8 @@ class WebF:
 
 
 
-    class HTTPHandler(BaseHTTPRequestHandler):
 
+    class HTTPHandler(BaseHTTPRequestHandler):
         #  Each command action on HTTP gets turned into a callable
         #  method here, e.g. curl -X GET is bound to do_GET.  There is no
         #  restriction; curl -X CORN will map to do_CORN and if do_CORN is not
@@ -181,118 +181,169 @@ class WebF:
                             
             
 
-        @staticmethod
-        def bsonWriter(ostream, doc, fmt):
-           # fmt is unused
-           ostream.write( bson.BSON.encode(doc) )
-
-
 
 
         def respond(self, args, handler):
 
-           hdrdoc = None
+            class baseWriter:
+                def writeWrap(self, material):
+                    if self.encoding == 'CHUNKED':
+                        slen = format(len(material), 'x')
+                        self.ostream.write(slen.encode('utf-8'))
+                        self.ostream.write("\r\n".encode('utf-8'))
+                        self.ostream.write(material)
+                        self.ostream.write("\r\n".encode('utf-8'))
+                    else:
+                        self.ostream.write(material)
+    
+            class bsonWriter(baseWriter):
+                def __init__(self, ostream, encoding):
+                    self.ostream = ostream
+                    self.encoding = encoding
 
-           # Give start() a chance to do something; it is required mostly
-           # because it must provide a response code.
-           (respCode, addtl_hdrs, hdrdoc, keepGoing) = handler.start(self.command, self.headers, args, self.rfile)
+                def prologue(self,things=None):
+                    pass
 
-           self.send_response(respCode)
+                def emit(self,doc):
+                    bytes = bson.BSON.encode(doc)
+                    self.writeWrap(bytes)
+
+                def epilogue(self,things=None):
+                    if self.encoding == 'CHUNKED':
+                        self.writeWrap(b'')  # The zero length chunk!
 
 
-           fmt = 'application/json'  # default
-           afmt = fmt
-           boundary = None
-           jfmt = mson.PURE
-           theWriter = mson.write
+            class jsonWriter(baseWriter):
+                def __init__(self, ostream, fmt, crdelim, encoding):
+                    self.ostream = ostream
+                    self.fmt = fmt
+                    self.crdelim = crdelim
+                    self.encoding = encoding
+                    self.wroteOne = False
 
-           #  We expect simple
-           #  Accept: application/json,json 
-           #  No fancy alternative and q factor stuff.
+                def prologue(self,things=None):
+                    pass
 
-           gg = []
-           if 'Accept' in self.headers:
-               gg = [ x.strip() for x in self.headers['Accept'].split(';')]
-               afmt = gg[0] # just take first one; very simple
+                def emit(self,doc):
+                    import io
 
-           if afmt == "application/bson":
-               jfmt = None
-               fmt = 'application/bson'
-               theWriter = self.bsonWriter
-               boundary = "_"  # trick the boundary logic
+                    if self.crdelim is False:
+                        if self.wroteOne is False:
+                            self.writeWrap(b'[')
+                        else:
+                            self.writeWrap(b',')
+
+                    fstr = io.BytesIO()
+                    mson.write(fstr, doc, self.fmt)
+                    bytes = fstr.getvalue()
+                    fstr.close()
+            
+                    self.writeWrap(bytes)
+                    self.wroteOne = True
+
+                def epilogue(self,things=None):
+                    if self.crdelim is False:
+                        self.writeWrap(b']')
+                    if self.encoding == 'CHUNKED':
+                        self.writeWrap(b'')  # The zero length chunk!
+
+
+
+
+            hdrdoc = None
+
+            # Give start() a chance to do something; it is required mostly
+            # because it must provide a response code.
+            (respCode, addtl_hdrs, hdrdoc, keepGoing) = handler.start(self.command, self.headers, args, self.rfile)
+
+            self.send_response(respCode)
+
+
+            fmt = 'application/json'  # default
+            afmt = fmt
+            jfmt = mson.PURE
+            crdelim = False
+            theWriter = None
+            encoding = None
+
+            if addtl_hdrs is not None:
+                for k,v in addtl_hdrs.items():
+                    if k.upper() == "TRANSFER-ENCODING" and v == "chunked":
+                        encoding = "CHUNKED"
+
+
+            #  We expect simple
+            #  Accept: application/json,json 
+            #  No fancy alternative and q factor stuff.
+
+            gg = []
+            if 'Accept' in self.headers:
+                gg = [ x.strip() for x in self.headers['Accept'].split(';')]
+                afmt = gg[0] # just take first one; very simple
+
+            if afmt == "application/bson":
+                fmt = 'application/bson'
+                theWriter = bsonWriter(self.wfile, encoding)
                
-           elif afmt == "application/json" or afmt == "application/ejson":
-               theWriter = mson.write
+            elif afmt == "application/json" or afmt == "application/ejson":
 
-               if afmt == "application/json":
-                   fmt = afmt
-                   jfmt = mson.PURE
+                if afmt == "application/json":
+                    fmt = afmt
+                    jfmt = mson.PURE
 
-               elif afmt == "application/ejson":
-                   fmt = afmt
-                   jfmt = mson.MONGO
+                elif afmt == "application/ejson":
+                    fmt = afmt
+                    jfmt = mson.MONGO
                    
-               # json and ejson support boundary=[LF,CR]
-               if len(gg) > 1:
-                   for item in gg:
-                       attr = item.split("=")
-                       if attr[0] == "boundary":
-                           if attr[1] in ['LF','CR']:
-                               boundary = "LF"
-                               fmt += "; boundary=LF"
-                           else:
-                               print("unsupported json boundary") # TBD
+                # json and ejson support boundary=[LF,CR]
+                if len(gg) > 1:
+                    for item in gg:
+                        attr = item.split("=")
+                        if attr[0] == "boundary":
+                            if attr[1] in ['LF','CR']:
+                                crdelim = True
+                                fmt += "; boundary=LF"
+                            else:
+                                print("unsupported json boundary") # TBD
 
-           # else afmt is an unrecognized fmt; should do something about this
-           self.send_header('Content-type', fmt)
-
-           if addtl_hdrs is not None:
-               for k,v in addtl_hdrs.items():
-                   self.send_header(k,v) 
-
-           if self.server.parent.cors is not None:
-              self.send_header('Access-Control-Allow-Origin', self.server.parent.cors)
-           self.end_headers()
+                theWriter = jsonWriter(self.wfile, jfmt, crdelim, encoding)
 
 
-           if boundary is None:
-               self.wfile.write(b'[')  # leading 'b' means convert to byte from unicode
+            # else afmt is an unrecognized fmt; should do something about this
+            self.send_header('Content-type', fmt)
+            
+            if addtl_hdrs is not None:
+                for k,v in addtl_hdrs.items():
+                    self.send_header(k,v) 
 
-           wroteOne = False
+            if self.server.parent.cors is not None:
+                self.send_header('Access-Control-Allow-Origin', self.server.parent.cors)
 
-           if hdrdoc != None:
-              theWriter(self.wfile, hdrdoc, jfmt)
-              wroteOne = True
-
-           if keepGoing is False:
-               if boundary is None:
-                   self.wfile.write(b']')
-               return
-
-           mmm = getattr(handler, "next", None)
-           if callable(mmm):              
-              for r in handler.next():
-                  if boundary is None:
-                      if wroteOne == True:
-                          self.wfile.write(b',')
-
-                  theWriter(self.wfile, r, jfmt)
-                  wroteOne = True
+            self.end_headers()
 
 
-           mmm = getattr(handler, "end", None)
-           if callable(mmm):              
-              footerdoc = handler.end()
-              if footerdoc != None:
-                  if boundary is None:
-                      if wroteOne == True:
-                          self.wfile.write(b',')
 
-                  theWriter(self.wfile, footerdoc, jfmt)
-                  wroteOne = True
+            theWriter.prologue()
 
-           if boundary is None:
-               self.wfile.write(b']')                    
+            if hdrdoc != None:
+                theWriter.emit(hdrdoc)
+
+            if keepGoing is False:
+                theWriter.epilogue()
+                return
+
+            mmm = getattr(handler, "next", None)
+            if callable(mmm):              
+                for r in handler.next():
+                    theWriter.emit(r)
+
+            mmm = getattr(handler, "end", None)
+            if callable(mmm):              
+                footerdoc = handler.end()
+                if footerdoc != None:
+                    theWriter.emit(r)
+
+            theWriter.epilogue()
 
 
 

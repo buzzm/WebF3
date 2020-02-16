@@ -226,7 +226,9 @@ framework will appropriately wrap the outbound material based on the
 `Accept` header as follows:
 * `application/json or ejson`:  A leading `[` will be emitted before the first doc
 and a trailing `]` emitted after the last doc.  If no docs are created in the
-function, this becomes a valid array of length 0 i.e. `[]`.  This means the
+function, this becomes a valid array of length 0 i.e. `[]`.  If an error occurs
+and a precise return cannot be determined (including length zero), the function
+may not emit `[]` at all.  The
 caller must slurp/parse the entire response as a potentially large array and
 only then begin to operate on the individual items within.  It also means 
 that simple functions that emit a single doc are still always wrapped in
