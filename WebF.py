@@ -263,7 +263,6 @@ class WebF:
             afmt = fmt
             jfmt = mson.PURE
             crdelim = False
-            theWriter = None
             encoding = None
 
             if addtl_hdrs is not None:
@@ -271,6 +270,8 @@ class WebF:
                     if k.upper() == "TRANSFER-ENCODING" and v == "chunked":
                         encoding = "CHUNKED"
 
+
+            theWriter = jsonWriter(self.wfile, jfmt, crdelim, encoding)
 
             #  We expect simple
             #  Accept: application/json,json 
