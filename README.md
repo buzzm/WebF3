@@ -187,12 +187,17 @@ after the function name are placed into an array and assigned to the special
 argument name `_` in the `args` dictionary.
   * rfile:  The input stream if this is a PUT, POST, or PATCH
 
-`start` must return a tuple containing 4 items: the HTTP response code, additional http headers, a dict, and a boolean True or False to indicate that `next` and `end` should
-be executed.  The additional headers can be `None`.  The dict can be `None`.  It is 
-OK to return `None` as the "initial dict" yet pass `True` as the "keep going" flag.
+`start` must return a tuple containing 4 items: the HTTP response code, additional http headers, the "initial return set" either a dict (set of 1) OR an array of dict, and a boolean True or False to indicate that `next` and `end` should
+be executed.  The additional headers can be `None`.  The initial return set can be
+`None`.  It is 
+OK to return `None` as the initial return set yet pass `True` as the "keep going"
+flag.
 This sometimes make the setup of producing and emitting "rows" of data easier by
 localizing the logic to the `next` method instead of splitting it across `start` and
-`next`.  
+`next`.  Conversely, it may be easier to construct a small set of return dicts
+as an array in `start` and dispense with `next`.
+
+
 The framework does not interpret the meaning of response codes; it is the
 responsibility of the function writer to pass the combination of code, data (in the dict),
 and "keep going" flag.  The "keep going" flag is necessary because the framework will

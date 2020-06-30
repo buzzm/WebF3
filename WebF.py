@@ -242,7 +242,7 @@ class WebF:
                     self.wroteOne = True
 
                 def epilogue(self,things=None):
-                    if self.crdelim is False:
+                    if self.crdelim is False and self.wroteOne is True:
                         self.writeWrap(b']')
                     if self.encoding == 'CHUNKED':
                         self.writeWrap(b'')  # The zero length chunk!
@@ -250,11 +250,10 @@ class WebF:
 
 
 
-            hdrdoc = None
 
             # Give start() a chance to do something; it is required mostly
             # because it must provide a response code.
-            (respCode, addtl_hdrs, hdrdoc, keepGoing) = handler.start(self.command, self.headers, args, self.rfile)
+            (respCode, addtl_hdrs, inititems, keepGoing) = handler.start(self.command, self.headers, args, self.rfile)
 
             self.send_response(respCode)
 
@@ -326,8 +325,14 @@ class WebF:
 
             theWriter.prologue()
 
-            if hdrdoc != None:
-                theWriter.emit(hdrdoc)
+
+            if inititems != None:
+                if inititems.__class__.__name__ == 'list':
+                    for ww in inititems:
+                        if ww is not None:
+                            theWriter.emit(ww)
+                else:
+                    theWriter.emit(inititems)
 
             if keepGoing is False:
                 theWriter.epilogue()
