@@ -88,9 +88,15 @@ In addition, json and ejson output can be sent in CR-delimited form
 with the `boundary=LF` attribute.  More
 on this in the section following basic class and function setup.
 
-4. Automatic handling of help.  Calling http://machine:port/help will return
+4. Flexibility to efficiently support a variety of response semantics from
+"the one big JSON object" to streamable (constant output) BSON and meta/data
+constructs without imposing a standard through appropriate use of `start` 
+and `next` methods.
+
+5. Automatic handling of help.  Calling http://machine:port/help will return
 the set of functions and descriptions and arguments to the caller.   
-5. Easy, flexible integration to RESTful callers.
+6. Easy, flexible integration to RESTful callers.
+
 
 
 Overview
@@ -142,8 +148,8 @@ would be handled by the following function registration:
 websvc.registerFunction("foo", Func1, context)
 ```
 
-Registration binds the function name (a string) to a class (*not* the instance,
-the class; not the class name, the class!) plus "context" or variables to pass
+Registration binds the function name (a string) to a class (*not* an instance
+of the class; not the class name as a string; just the class!) plus "context" or variables to pass
 to the function class upon construction.  The function name string cannot be
 the empty string "" and it should realistically
 be something that can be easily encoded on the URL so
@@ -158,10 +164,11 @@ new handler instance is created.  Shared material or material that must
 persist across calls, if desired, can be accessed/managed via the context.
 The complete scope lifecycle is:
 * After startup, there is a single object of type `MultiThreadedHTTPServer`
-listening on address and port.  It is a derived from `http.server.HTTPServer`
-and 'ThreadingMixIn`. 
+listening on address and port.  It is derived from `http.server.HTTPServer`
+and `ThreadingMixIn`. 
 * As part of the `MultiThreadedHTTPServer` initialization, it takes the name
-of a class (not an instance; the name!) that must implement
+of a class (*not* an instance of the class; not the class name as a string;
+just the class!) that must implement
  `BaseHTTPRequestHandler`; in this implementation,
 the internal derived type is `WebF.HTTPHandler`.
 * When a socket connection is made to `MultiThreadedHTTPServer`, it creates
@@ -169,8 +176,8 @@ a new `WebF.HTTPHandler` instance, sets it up with connection specific
 information like caller IP and port, creates a new thread, and calls the
 `do_GET/do_POST` etc. on the new `WebF.HTTPHandler` instance.
 * The WebF framework will map the incoming URL path to a registered function,
-create a new instance of that class, and begin the __init__/authenticate/
-start/next/end cycle
+create a new instance of that class, and begin the `__init__/authenticate/
+start/next/end` cycle
 * In summary, by the time `__init__` is called on the registered function,
 all material accessible from `self` is threadsafe.
 
@@ -198,9 +205,9 @@ All other path pieces following the registered pieces are considered RESTful arg
 to the function and are handled as described in `args` below.
 
 The class must support these methods:
-* __init__:  Is passed context as argument.
-* help:  More on this later.
-* start:  Called once at the start of the web service call and is passed:
+* `__init__`:  Is passed context as argument.
+* `help`:  More on this later.
+* `start`:  Called once at the start of the web service call and is passed:
   * cmd: "GET", "POST", "PUT", "PATCH", or "DELETE"
   * hdrs:  A dictionary of HTTP headers
   * args:  A dictionary of arguments, decoded from the inbound JSON args and observing EJSON conventions, so numbers are actually numbers, dates are `datetime.datetime`, etc.  Any RESTful arguments i.e. those path components appearing
@@ -229,13 +236,13 @@ Note that it is a noop if the keep going flag is set True and there is no
 
 
 The class can optionally provide these methods:
-* next:  Called iteratively as necessary for the function to vend units of
+* `next`:  Called iteratively as necessary for the function to vend units of
 content.   This allows the function to incrementally vend output
 to the consumer.  It is therefore not necessary, for example, to build a giant
 array of 100,000 items in the start() method and emit a single huge response.
 The client, however, sees a single stream of material and does not have to
 perform any special actions.  next() leverages python's yield operator.
-* end:  Called after iteration to next() has concluded.  Can optionally return
+* `end`:  Called after iteration to next() has concluded.  Can optionally return
 a dict that will be sent to the client.
 Command-style function that only return a status doc typically only need a
 start() method; no next() or end().
