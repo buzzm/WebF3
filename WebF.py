@@ -2,8 +2,6 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from socketserver import ThreadingMixIn
 
-import ratelimit   # PYTHONPATH= pip3 install ratelimit
-
 import urllib.parse
 import datetime
 from mson import mson
@@ -67,6 +65,14 @@ class WebF:
 
 
     class HTTPHandler(BaseHTTPRequestHandler):
+#  Good for debugging just in case..
+#        def __init__(self, arg1, arg2, arg3):
+#           print("HTTPHandler self:", self)
+#            print("HTTPHandler arg1:", arg1)
+#            print("HTTPHandler arg2:", arg2)
+#            print("HTTPHandler arg3:", arg3)
+#            super(WebF.HTTPHandler, self).__init__(arg1, arg2, arg3);
+
         #  Each command action on HTTP gets turned into a callable
         #  method here, e.g. curl -X GET is bound to do_GET.  There is no
         #  restriction; curl -X CORN will map to do_CORN and if do_CORN is not
@@ -630,6 +636,7 @@ class WebF:
 
         self.rateLimiter = None
         if 'rateLimit' in self.wargs:
+            import ratelimit   # PYTHONPATH= pip3 install ratelimit
             self.rateLimiter = ratelimit.RateLimitDecorator(calls=self.wargs['rateLimit'],period=1)
 
 

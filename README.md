@@ -155,7 +155,28 @@ shared across multiple threads.  This requires special attention to not
 putting anything in class scope (without special handling) to prevent
 concurrency issues.   WebF is simpler: when the function is called, a
 new handler instance is created.  Shared material or material that must
-persist across calls, if desired, can be accessed/managed via the context.  
+persist across calls, if desired, can be accessed/managed via the context.
+The complete scope lifecycle is:
+* After startup, there is a single object of type `MultiThreadedHTTPServer`
+listening on address and port.  It is a derived from `http.server.HTTPServer`
+and 'ThreadingMixIn`. 
+* As part of the `MultiThreadedHTTPServer` initialization, it takes the name
+of a class (not an instance; the name!) that must implement
+ `BaseHTTPRequestHandler`; in this implementation,
+the internal derived type is `WebF.HTTPHandler`.
+* When a socket connection is made to `MultiThreadedHTTPServer`, it creates
+a new `WebF.HTTPHandler` instance, sets it up with connection specific 
+information like caller IP and port, creates a new thread, and calls the
+`do_GET/do_POST` etc. on the new `WebF.HTTPHandler` instance.
+* The WebF framework will map the incoming URL path to a registered function,
+create a new instance of that class, and begin the __init__/authenticate/
+start/next/end cycle
+* In summary, by the time `__init__` is called on the registered function,
+all material accessible from `self` is threadsafe.
+
+It is the responsibility of the program using WebF to properly apply
+locking constructs around shared resources in the parent context, if
+necessary and appropriate.
 
 Functions can be deregistered with the `deregisterFunction` method.  Both
 `registerFunction` and `deregisterFunction` can be called at any time 
