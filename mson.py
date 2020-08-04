@@ -170,8 +170,10 @@ class mson:
         #
         #    {\"server\": \"julia\", \"bob \\\"and\\\" danA\"}
         #
+        #  TBD:  This groom could use completeness and performance...
         def groomJSONStr(instr):
-            return instr.replace('\\','\\\\').replace('"', '\\\"').replace("\n","\\n")
+            return instr.replace('\\','\\\\').replace('"', '\\\"').replace("\n","\\n").replace("\t","\\t")
+
 
         def emitItem(lvl, ith, v):
             spcs = ""
@@ -236,7 +238,8 @@ class mson:
 #                else:
 #                    emit(spcs, v)
 
-            elif isinstance(v, datetime.datetime):
+
+            elif isinstance(v, datetime.datetime) or isinstance(v, datetime.date):
                 #  Mongo supports pass epoch as well but
                 #  this is probably the safer route.
                 #  Just convert to ISO8601 for both...
@@ -245,7 +248,10 @@ class mson:
                 q = v.strftime("%Y-%m-%dT%H:%M:%S")                
 
                 #  Sigh.  Must get millis from micros!
-                ms = v.microsecond/1000
+                if isinstance(v, datetime.date):
+                    ms = 0
+                else:
+                    ms = v.microsecond/1000
 
                 iso8601 ="%s.%sZ" % (q,ms)
 
