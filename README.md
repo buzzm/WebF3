@@ -119,7 +119,7 @@ sslCertChainFile (string)  Path to file in PEM format just the full cert chain b
 
 cors (string)           URI or *.  If set, server will set Access-Control-Allow-Origin header to this value upon return
 
-rateLimit (int)         Server-scoped (i.e. across all functions) call rate limit per second
+rateLimit (int)         Server-scoped (i.e. across all functions) call rate limit per second.   Requires availability of python "ratelimit" module.
 
 allowHelp (boolean)     If False, the built-in help function is defeated (default: True)
 
@@ -283,8 +283,8 @@ The class optionally may provide an `authenticate` method.  See
 Authentication below for more.
 
 Functions can have zero more arguments.  Unlike traditional functions,
-there are only 2 HTTP arguments in the framework: `args` and `fargs`.  The latter
-is framework arguments which we'll cover later.  `args` is simply a JSON
+there is only 1 HTTP argument in the framework: `args`.  
+`args` is simply a JSON
 string that itself carries all the "real" arguments.  This provides a 
 standard, easily externalizable format to supply arguments of any type
 including lists of structures, binary data, etc.  The incoming JSON
@@ -396,12 +396,6 @@ GET thing/E123?args='{"fields":["id","maker"]}'
 
 
 
-`fargs` are framework-level args and are common across ALL functions
-in ANY service that is deployed.  This is an area to be developed.
-
-
-
-
 Help
 ----
 A key feature of WebF is built-in help for functions.  When the service 
@@ -490,6 +484,15 @@ websvc = WebF.WebF({"matchHeader": { "User-Agent": [ "^curl/", "^Mozilla/5.0" ] 
 ```
 
 
+Rate Limiting
+-------------
+A server-scoped (i.e. across all functions) rate limited can be activated
+thusly, where `n` is the maximum number of calls per second that will be
+tolerated before error 429 Too Many Requests is returned:
+```
+websvc = WebF.WebF({"rateLimit": n})
+```
+Activating this feature requires that 
 
 
 Logging
