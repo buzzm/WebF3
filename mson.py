@@ -42,7 +42,6 @@ from bson.binary import Binary
 
 import base64
 
-
 class mson:
     PURE = 0
     MONGO = 1
