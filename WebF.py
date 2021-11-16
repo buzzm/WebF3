@@ -47,12 +47,12 @@ class WebF:
 
 
     class internalErr:
-        def __init__(self, respcode, errs):
-            self.respcode = respcode
+        def __init__(self, respCode, errs):
+            self.respCode = respCode
             self.errs = errs
 
         def start(self, cmd, hdrs, args, rfile):
-           return (self.respcode, None, None, True)
+           return (self.respCode, None, None, True)
         
         def next(self):
             for err in self.errs:
@@ -256,7 +256,6 @@ class WebF:
 
 
 
-
             # Give start() a chance to do something; it is required mostly
             # because it must provide a response code.
             (respCode, addtl_hdrs, inititems, keepGoing) = handler.start(self.command, self.headers, args, self.rfile)
@@ -353,99 +352,102 @@ class WebF:
             if callable(mmm):              
                 footerdoc = handler.end()
                 if footerdoc != None:
-                    theWriter.emit(r)
+                    theWriter.emit(footerdoc)
 
             theWriter.epilogue()
 
 
+        #
+        #  RATE LIMIT
+        #
+        def chk_rateLimit(self, xx):
+            respCode = 200  # assume all OK
+            err = None
 
-        def call(self, path):
-            xx = self.server.parent
+            if xx.rateLimiter is not None:
+                import ratelimit # needed for ratelimit.exception 
 
-            respCode    = 200
-            args        = None
-            fargs       = None
-            fmt         = None; 
-
-            try: 
-                # Fancy way of calling decorator:
-                if xx.rateLimiter is not None:
+                try: 
+                    # Fancy way of calling decorator:
                     xx.rateLimiter.__call__(lambda: None)()
+                    
+                except ratelimit.exception.RateLimitException as e:
+                    err = {
+                        'errcode': 9,
+                        'msg': "call rate limit exceeded"
+                        }
+                    respCode = 429
 
-            except ratelimit.exception.RateLimitException as e:
-               err = {
-                  'errcode': 9,
-                  'msg': "call rate limit exceeded"
-                  }
-               handler = xx.errHandler(429, [err])
-               self.respond(None, handler)
-               return   # bail out
+            return (respCode, err)
 
 
+
+        def chk_headers(self, xx):
+            respCode = 200  # assume all OK
+            err = None
 
             if xx.match_header is not None:
                 for hdrname in xx.match_header:
                     mm = None
                     for rr in xx.match_header[hdrname]:
                         item = self.headers[hdrname] if hdrname in self.headers else ""
-
+                        print("HDR: ", item)
                         mm = re.search(rr, item)
                         if mm is not None:
                             break
+
                     if mm is None:
                         err = {
                             'errcode': 11,
                             'msg': "header %s value is invalid" % hdrname
                             }
-                        #handler = xx.errHandler(400, [err])
-                        handler = xx.errHandler(400, [err])
-                        self.respond(None, handler)
-                        return   # bail out
+                        respCode = 400
+
+            return (respCode, err)
+
+
+
+        def getHandlerForFunc(self, xx, path):
+            user = None
+            respCode = 200
+
+            # Extract params (after the '?') from the rest of it:
+            prefunc,params = self.parse(path)
+
+            if prefunc == xx.helpFuncName:  
+                prefunc = "help"
+
+            if prefunc == "help":
+                # "__help" is registered; help is not.  So is help
+                # is defeated, then don't switch names 
+                if xx.allow_help == True:
+                    prefunc = xx.helpFuncName
 
                 
-            try:
-                user = None
+            func = None
+            restful = None
 
-                ss = datetime.datetime.now()
-
-                # Extract params (after the '?') from the rest of it:
-                prefunc,params = self.parse(path)
-
-                if prefunc == xx.helpFuncName:  
-                    prefunc = "help"
-
-                if prefunc == "help":
-                    # "__help" is registered; help is not.  So is help
-                    # is defeated, then don't switch names 
-                    if xx.allow_help == True:
-                        prefunc = xx.helpFuncName
-
+            #  Basically, do a longest-first match to get the name:
+            for fname,v in sorted(xx.fmap.items(), key=lambda k: (len(k),k), reverse=True):
+                lname = len(fname)
+                frag = prefunc[:lname]
+                #print("[%s] %d [%s] %d" % (fname,lname,frag,len(frag)))
+                if fname == frag:
+                    func = fname
+                    restful = prefunc[lname+1:]  # hop over the /
+                    if restful == "":
+                        restful = None
+                    break
                 
-                func = None
-                restful = None
+            if restful is not None:
+                qq = restful.split('/')
+                params['_'] = qq
 
-                #  Basically, do a longest-first match...
-                for fname,v in sorted(xx.fmap.items(), key=lambda k: (len(k),k), reverse=True):
-                    lname = len(fname)
-                    frag = prefunc[:lname]
-                    #print "[%s] %d [%s] %d" % (fname,lname,frag,len(frag))
-                    if fname == frag:
-                        func = fname
-                        restful = prefunc[lname+1:]  # hop over the /
-                        if restful == "":
-                            restful = None
-                        break
-                
-                if restful is not None:
-                    qq = restful.split('/')
-                    params['_'] = qq
-
-
-                #
-                # START PRELIM
-                # Get the function, parse the args
-                #
-                if func not in xx.fmap:
+            #
+            # START PRELIM
+            # Get the function, parse the args
+            #
+            if func not in xx.fmap:
                    err = {
                       'errcode': 5,  # TBD
                       'msg': "no such function",
@@ -453,156 +455,180 @@ class WebF:
                       }
                    respCode = 404 
                    handler = xx.errHandler(respCode, [err])
-
-                else:
-                    (hname,context) = xx.fmap[func]
-
-                    # Construct a NEW handler instance!
-                    handler = hname(context)
-
-                    try:
-                       args = mson.parse(params['args'], mson.MONGO) if 'args' in params else {}
-                       if '_' in params:
-                           args['_'] = params['_'] 
-
-                    except:
-                       err = {
-                          'errcode': 4,
-                          'msg': "malformed JSON for args"
-                          }
-                       respCode = 400
-                       handler = xx.errHandler(respCode, [err])
+                   return (None, None, respCode, err, user, handler) # BAIL OUT
 
 
-                    try:
-                       fargs = mson.parse(params['fargs'], mson.MONGO) if 'fargs' in params else {}
-                    except:
-                       err = {
-                          'errcode': 5,
-                          'msg': "malformed JSON for fargs"
-                          }
-                       respCode = 400
-                       handler = xx.errHandler(respCode, [err])
+            # We have a valid registered function!
+            # Construct a NEW handler instance!
+            # From here on down, the function handler can now deal
+            # with errors (because we have found a valid funciton)
+            (hname,context) = xx.fmap[func]
+            handler = hname(context)
+
+            try:
+                args = mson.parse(params['args'], mson.MONGO) if 'args' in params else {}
+                if '_' in params:
+                    args['_'] = params['_'] 
+
+            except:
+                err = {
+                    'errcode': 4,
+                    'msg': "malformed JSON for args"
+                    }
+                respCode = 400
+                handler = xx.errHandler(respCode, [err])
+                return (func, None, respCode, err, user, handler) # BAIL OUT
+
+            
+            #  Basic stuff is OK, args if are parsed (but not checked) and handler is set.
+            #  Move on.
+            #  Check args and authentication.  If either is bad, then
+            #  SWITCH the handler to the error handler and set an
+            #  appropriate HTTP return code.
+            zz = handler.help()
+            argerrs = self.chkArgs(zz, args)
+
+            if len(argerrs) > 0:
+                respCode = 400
+                handler = xx.errHandler(respCode, argerrs) # TBD...
+                return (func, args, respCode, argerrs, user, handler) # BAIL OUT
+
+
+            tt2 = None
+
+            # Low impact so get it out of the way, even if
+            # unused...
+            clrt = self.client_address  # not a func, a tuple!
+            clrh = {
+                "name": self.address_string(),
+                "ip": clrt[0],
+                "port": clrt[1]
+                }
+
+            # Go for local override first...
+            authMethod = getattr(handler, "authenticate", None)
+
+            if callable(authMethod):
+                tt2 = authMethod(clrh, self.headers, args)
+
+            elif xx.auth_handler is not None:
+                tt2 = xx.auth_handler(handler, xx.auth_context, clrh, self.headers, args)
+
+            if tt2 is not None:
+                # Expect (T|F, name, data)
+                user = tt2[1]
+
+                if tt2[0] == False:
+                    err = {
+                        'errcode': 3,
+                        'user': user,  # OK to be None
+                        'msg': "authentication failure"
+                        }
+                    if len(tt2) == 3:
+                        err['data'] = tt2[2]
+
+                    respCode = 401
+                    handler = xx.errHandler(respCode, [err])
+                    return (func, args, respCode, err, user, handler) # BAIL OUT
+
+
+            # Ready to go!
+            return (func, args, respCode, None, user, handler)
 
 
 
-                # END PRELIM
+
+        def call(self, path):
+            xx = self.server.parent
+
+            respCode    = 200
+            user        = None
+            args        = None
+            fmt         = None
+            func        = None
+            err         = None
+            handler     = None
+
+            ss = datetime.datetime.now()
+
+            try:
+                (respCode,err) = self.chk_rateLimit(xx)
                 if respCode != 200:
-                   self.respond(args, handler)
-
+                    handler = xx.errHandler(respCode, [err])
                 else:
-                    #  Basic stuff is OK and handler is set.  Move on.
-                    #  Check args and authentication.  If either is bad, then
-                    #  SWITCH the handler to the error handler and set an
-                    #  appropriate HTTP return code.
-                    zz = handler.help()
-                    argerrs = self.chkArgs(zz, args)
-
-                    if len(argerrs) > 0:
-                       respCode = 400
-                       handler = xx.errHandler(respCode, argerrs)
-
+                    (respCode,err) = self.chk_headers(xx)
+                    if respCode != 200:
+                        handler = xx.errHandler(respCode, [err])                    
                     else:
-                       tt2 = None
-
-                       # Low impact so get it out of the way, even if
-                       # unused...
-                       clrt = self.client_address  # not a func, a tuple!
-                       clrh = {
-                           "name": self.address_string(),
-                           "ip": clrt[0],
-                           "port": clrt[1]
-                           }
-
-                       # Go for local override first...
-                       authMethod = getattr(handler, "authenticate", None)
-
-                       if callable(authMethod):
-                           tt2 = authMethod(clrh, self.headers, args)
-
-                       elif xx.auth_handler is not None:
-
-                          tt2 = xx.auth_handler(handler, xx.auth_context, clrh, self.headers, args)
-                           
-                       if tt2 is not None:
-                           # Expect (T|F, name, data)
-                           user = tt2[1]
-
-                           if tt2[0] == False:
-                               err = {
-                                   'errcode': 3,
-                                   'user': user,  # OK to be None
-                                   'msg': "authentication failure"
-                                   }
-                               if len(tt2) == 3:
-                                   err['data'] = tt2[2]
-
-                               handler = xx.errHandler(401, [err])
-
-                    self.respond(args, handler)
-
-
-                ee = datetime.datetime.now()
-
-
-                loghandler = None
-                uselogcontext = True
-
-                if xx.log_handler != None:
-                    loghandler = xx.log_handler
-
-                # Function-specific overrides:
-                logMethod = getattr(handler, "log", None)
-                if callable(logMethod):
-                    loghandler = logMethod
-                    uselogcontext = False
-
-                if loghandler != None:
-                   if user == None:
-                      user = "ANONYMOUS"
-
-                   #diffms = int((ee - ss)/1000)
-                   tdelta = ee - ss
-                   diffms = int(tdelta.microseconds/1000)
-
-                   clrt = self.client_address  # not a func, a tuple!
-                   clrh = {
-                       "name": self.address_string(),
-                       "ip": clrt[0],
-                       "port": clrt[1]
-                       }
-                   
-                   info = {
-                         "caller": clrh,
-                         "user": user,
-                         "func": func,
-                         "params": params,
-                         "stime": ss,
-                         "etime": ee,
-                         "millis": diffms,
-                         "status": respCode
-                         }
-
-                   if uselogcontext == True:
-                       loghandler(info, xx.log_context)
-                   else:
-                       loghandler(info)
-
+                        (func,args,respCode,err,user,handler) = self.getHandlerForFunc(xx, path)
 
 
             except Exception as e:
                err = {
                   'errcode': 6,
                   'msg': "internal error",
-                  "data": func
+                  "data": "TBD"
                   }
                handler = xx.errHandler(500, [err])
-               self.respond(args, handler)
 
                import traceback
-               traceback.print_exc()
+               traceback.print_exc() # will be picked up in local logs...?
+               #raise e
 
-               raise e
+
+            # One way or another we now MUST have a handler.
+            # Respond begins the start/next looper:
+            self.respond(args, handler)
+
+
+            ee = datetime.datetime.now()               
+               
+            loghandler = None
+            uselogcontext = True
+
+            if xx.log_handler != None:
+                loghandler = xx.log_handler
+
+            # Function-specific overrides
+            if handler is not None:
+                logMethod = getattr(handler, "log", None)
+                if callable(logMethod):
+                    loghandler = logMethod
+                    uselogcontext = False
+
+            if loghandler != None:
+                if user == None:
+                    user = "ANONYMOUS"
+
+                tdelta = ee - ss
+                diffms = int(tdelta.microseconds/1000)
+
+                clrt = self.client_address  # not a func, a tuple!
+                clrh = {
+                    "name": self.address_string(),
+                    "ip": clrt[0],
+                    "port": clrt[1]
+                    }
+                   
+                info = {
+                    "caller": clrh,
+                    "user": user,
+                    "func": func,
+                    "args": args,
+                    "stime": ss,
+                    "etime": ee,
+                    "millis": diffms,
+                    "status": respCode,
+                    "err": err
+                    }
+
+                if uselogcontext == True:
+                    loghandler(info, xx.log_context)
+                else:
+                    loghandler(info)
+
+
+
 
 
     #
