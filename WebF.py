@@ -391,7 +391,6 @@ class WebF:
                     mm = None
                     for rr in xx.match_header[hdrname]:
                         item = self.headers[hdrname] if hdrname in self.headers else ""
-                        print("HDR: ", item)
                         mm = re.search(rr, item)
                         if mm is not None:
                             break
