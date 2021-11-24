@@ -3,7 +3,6 @@ WebF
 
 A very lightweight python3 web server with pluggable function handling.
 
-UNDER CONSTRUCTION!
 
 Basic Use
 ---------
@@ -69,6 +68,7 @@ $ curl -g 'http://localhost:7778/help
 The WebF framework has these design goals:
 
 1. Lightweight.  WebF relies only on internal python libs and one other lib (included)
+plus the `ratelimit` module if rate limiting is activated.
 2. Standardized handling of web service args.  All functions in WebF take a
 single arg called "args" which is a JSON string.  This permits standardization
 of representing extended types like Decimal and Dates and facilitates array and
@@ -492,7 +492,8 @@ tolerated before error 429 Too Many Requests is returned:
 ```
 websvc = WebF.WebF({"rateLimit": n})
 ```
-Activating this feature requires that 
+Activating this feature requires that the `ratelimit` module be installed
+in the python3 path.
 
 
 Logging
@@ -510,7 +511,7 @@ dict with useful data (here filled in with representative examples):
  'stime': datetime.datetime(2017, 1, 29, 10, 56, 13, 374307)}
  'etime': datetime.datetime(2017, 1, 29, 10, 56, 13, 374909), 
  'millis': 12,
- 'params': {'args': '{"startTime":{"$date":"2017-01-02T19:00:06.000Z"}}'},
+ 'args': {"startTime":{"$date":"2017-01-02T19:00:06.000Z"}},
  'user': 'ANONYMOUS',
  'func': 'helloWorld'
 }
