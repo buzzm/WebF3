@@ -50,7 +50,7 @@ class mson:
     def parse(strval,mode):
 
         mm = json.loads(strval)
-
+        
         if mode == mson.PURE:  # Yer done!
             return mm  #  just leave
 
@@ -71,7 +71,13 @@ class mson:
             newval = None
 
             if isinstance(thing, dict):
-                cks = thing.keys()
+                # python3 thing.keys() is no long an iteratable but
+                # rather a dict_keys.  len() still works BUT direct
+                # integer subscripting does not.  The std workaround
+                # is to call list() which exposes us to the thread-
+                # changing-the-dict-miditeration problem but we do
+                # not have that here...
+                cks = list(thing.keys())
 
                 #  Sigh.... special case for $binary...
                 if len(cks) == 2:
@@ -93,7 +99,7 @@ class mson:
                 elif len(cks) == 1:
                     ck = cks[0]
                     v = thing[ck]
-
+                        
                     if ck == "$numberInt":  # future?
                         newval = int(v)
                 
@@ -109,7 +115,6 @@ class mson:
                                 dv = parser.parse(v)
                             else:
                                 dv = cvtLongMillisToDatetime(int(v))
-
 
                         newval = dv
 
