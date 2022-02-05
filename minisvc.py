@@ -1,17 +1,19 @@
 #
-# curl http://localhost:7778/func1
+# curl -k -g -i 'https://localhost:7778/func1?args={"maxCount":1}'
 #
 
 import WebF
 
 import datetime
 import bson
+import json
 from decimal import Decimal
 
 
 class Func1:
     def __init__(self, context):
-        pass
+        self.webfobj = context
+        self.maxCount = 0
 
     def help(self):
         return {"type":"simple",
@@ -21,6 +23,8 @@ class Func1:
                    "desc":"max number of snacks"}
                 ]
                 }
+
+
 
     def makeDoc(self, num):
         #dd = datetime.datetime.now()
@@ -67,15 +71,21 @@ forever"""
 
 
     def start(self, cmd, hdrs, args, rfile):
-        print("hdrs:", hdrs)
+        print("hdrs:\n", hdrs)
         print("args:", args)
-        doc = self.makeDoc(1)
+
+        skt = self.webfobj.httpd.socket
+        print("socket:", skt)
+        print("cipher:", skt.cipher())
+
+        self.maxCount = args['maxCount'] # exists because it is required
+
         addtl_hdrs = {"X-Header-1":"v1"}
-        return (200, addtl_hdrs, doc, True)
+        return (200, addtl_hdrs, None, True)
 
     def next(self):
-        for x in range(0,2):
-            doc = self.makeDoc(2+x)
+        for x in range(0,self.maxCount):
+            doc = self.makeDoc(x)
             yield doc
 
 
@@ -95,6 +105,7 @@ class Func2:
         doc = {"x":0,"name":"buzz","hdate":datetime.datetime.now()}
 
         addtl_hdrs = {"Transfer-Encoding":"chunked"}
+
         return (200, addtl_hdrs, doc, True)
 
     def next(self):
@@ -102,6 +113,30 @@ class Func2:
             doc = {"x":x,"name":"buzz","hdate":datetime.datetime.now(), "amt": bson.decimal128.Decimal128("77.2")}
             yield doc
 
+
+class Echo:
+    def __init__(self, context):
+        pass
+
+    def help(self):
+        return {"type":"simple",
+                "desc":"A function that returns something."
+                }
+
+    def start(self, cmd, hdrs, args, rfile):
+        print("hdrs:", hdrs)
+        print("args:", args)
+
+        if cmd == 'POST':
+            len = 0
+            if 'Content-Length' in hdrs:
+                len = int(hdrs['Content-Length'])
+            print("POST data len",len)
+            qq = rfile.read(len)
+            mdata = json.loads(qq)
+            print(mdata)
+
+        return (200, None, None, False)
 
 
 class MyErr:
@@ -115,6 +150,42 @@ class MyErr:
     def start(self, cmd, hdrs, args, rfile):
         # Basically, turn ALL errors into Go Away errors:
         return (501, {"Warning":"299 - Go Away"}, None, False)
+
+
+
+class MyErr2:
+
+    def __init__(self, respcode, errs):
+        self.ip = None
+        self.respcode = respcode
+        self.errs = errs
+        self.UA = None
+
+    def log(self, info):
+
+        OutFile = "foo.log"
+
+        print("***MyErrLog:\n","Self:","","\nInfo:",info)
+        if 'data' in self.errs[0]:
+            print("%s - %s [%s] %s %s \"%s\" \"%s\" \"%s\"" % 
+                  (info['caller']['ip'],
+                   info['user'],
+                   info['stime'].strftime('%d/%b/%Y %H:%M:%S'),
+                   info['status'],
+                   self.errs[0]['errcode'],
+                   self.errs[0]['msg'],
+                   self.errs[0]['data'],
+                   self.UA), 
+                  flush=True)
+        else:
+            print("%s - %s [%s] %s %s \"%s\" \"%s\" \"%s\"" % (info['caller']['ip'],info['user'],info['stime'].strftime('%d/%b/%Y %H:%M:%S'),info['status'],self.errs[0]['errcode'],self.errs[0]['msg'],None,self.UA), flush=True)
+
+
+    def start(self, cmd, hdrs, args, rfile):
+        print("***MyErrStart:\n","Self:","","\nCmd:",cmd,"\nHdrs:",hdrs,"\nArgs:",args,"\nRfile:",rfile)
+        self.UA = hdrs['User-Agent']
+        # Basically, turn ALL errors into Go Away errors:
+        return (501, {"Content-Length":0}, None, False)
 
 
 
@@ -132,19 +203,22 @@ def main():
         "cors":'*',
 
 #        "allowHelp":False,
-#        "matchHeader": { "User-Agent": [ "^Xcurl" ] } ,
 
-        "errorHandler": MyErr,
+        "matchHeader": { "User-Agent": [ "^curl" ] } ,
 
-        "rateLimit":5
+#        "errorHandler": MyErr2,
+
+        "rateLimit":1
         }
 
     r = WebF.WebF(webfArgs)
 
-    r.registerFunction("func1", Func1, None);
+    r.registerFunction("func1", Func1, r); 
     r.registerFunction("func2", Func2, None);
 
-#    r.registerLogger(logF, "log context")
+    r.registerFunction("echo", Echo, r);
+
+    r.registerLogger(logF, "log context")
 
     print("ready")
     r.go()
