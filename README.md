@@ -248,7 +248,7 @@ Command-style function that only return a status doc typically only need a
 start() method; no next() or end().
 
 The class does not have to deal with encoding or output formats.  `start`,
-`next`, and `end` should return native python dicts complete with rich types
+`next`, and `end` must return native python dicts complete with rich types
 like arrays and `Decimal` and `datetime.datetime` -- i.e. you don't have to
 bother with converting dates into ISO8601 strings.  The WebF framework will
 convert the data to the format specified in the `Accept` header.
@@ -257,7 +257,7 @@ The class also does not have to deal with "array wrapping" of the returned
 material.  The class need only construct individuals dicts.  The WebF
 framework will appropriately wrap the outbound material based on the
 `Accept` header as follows:
-* `application/json or ejson`:  A leading `[` will be emitted before the first doc
+* `application/json or ejson`  <b>Default return format</B>: A leading `[` will be emitted before the first doc
 and a trailing `]` emitted after the last doc.  If no docs are created in the
 function, this becomes a valid array of length 0 i.e. `[]`.  If an error occurs
 and a precise return cannot be determined (including length zero), the function
